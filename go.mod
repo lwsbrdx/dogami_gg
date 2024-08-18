@@ -1,4 +1,4 @@
-module dogami_gg_wails
+module dogami_gg
 
 go 1.22
 

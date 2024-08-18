@@ -1,0 +1,14 @@
+{
+  "source": [
+    "./build/bin/DogamiGG.app"
+  ],
+  "bundle_id": "com.lwsbrdx.dogamigg",
+  "apple_id": {
+    "username": "lewisberdix@gmail.com",
+    "password": "@env:APPLE_PASSWORD"
+  },
+  "sign": {
+    "application_identity": "Apple Development: lewisberdix@gmail.com (MJP84X5HDN)",
+    "entitlements_file": "./build/darwin/entitlements.plist"
+  }
+}
