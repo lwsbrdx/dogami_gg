@@ -1,0 +1,108 @@
+name: Wails Multi-Platform builds
+on: [push]
+  # workflow_dispatch:
+  #   # This Action only starts when you go to Actions and manually run the workflow.
+  # push:
+  #   # Pattern matched against refs/tags
+  #   tags:
+  #     - '**' # Push events to every tag including hierarchical tags like v1.0/beta
+env:
+  # Necessary for most environments as build failure can occur due to OOM issues
+  NODE_OPTIONS: "--max-old-space-size=4096"
+  app_name: DogamiGG
+
+# Step 5.2 : Windows Sign
+# Step 6 : Create release and upload files
+
+jobs:
+  build:
+    strategy:
+    # Failure in one platform build won't impact the others
+      fail-fast: false
+      matrix:
+        build:
+          - platform: 'linux/amd64'
+            os: 'ubuntu-latest'
+          - platform: 'windows/amd64'
+            os: 'windows-latest'
+          - platform: 'darwin/universal'
+            os: 'macos-latest'
+
+    runs-on: ${{ matrix.build.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      ## INSTALL
+      - name: Install go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.23
+      - name: Install node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Install Linux Wails deps  
+        if: matrix.build.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install libgtk-3-0 libwebkit2gtk-4.0-dev gcc-aarch64-linux-gnu
+        shell: bash
+      - name: Install macOS Wails deps
+        if: matrix.build.os == 'macOS-latest'
+        run: brew install mitchellh/gon/gon
+        shell: bash
+      ## BUILD
+      - name: Build DogamiGG
+        run: |
+          wails build -platform ${{ matrix.build.platform }} -webview2 'download'
+        shell: bash
+      - name: macOS make bin executable
+        if: matrix.build.os == 'macos-latest'
+        run: |
+          chmod +x build/bin/*/Contents/MacOS/*
+        shell: bash
+      - name: Add Linux perms
+        if: matrix.build.os == 'ubuntu-latest'
+        run: chmod +x build/bin/*
+        shell: bash
+      # SIGN MACOS
+      - name: Import Code-Signing Certificates for macOS
+        if: matrix.build.os == 'macos-latest'
+        uses: Apple-Actions/import-codesign-certs@v3
+        with:
+          # The certificates in a PKCS12 file encoded as a base64 string
+          p12-file-base64: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_P12_BASE64 }}
+          # The password used to import the PKCS12 file.
+          p12-password: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
+      - name: Sign macOS binary
+        if: matrix.build.os == 'macos-latest'
+        run: |
+          gon -log-level=info ./build/darwin/gon-sign.json
+      - name: Build .app zip file
+        if: matrix.build.os == 'macos-latest'
+        shell: bash
+        run: |
+          ditto -c -k --keepParent build/bin/$app_name.app build/bin/$app_name.app.zip
+      # - name: Notarising and zip
+      #   if: matrix.build.os == 'macos-latest'
+      #   shell: bash
+      #   env:
+      #     APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      #   run: |
+      #     xcrun notarytool submit ./build/bin/DogamiGG.app.zip \
+      #     --apple-id lewisberdix@gmail.com \
+      #     --team-id XXXXXXXXXX
+      #     --password @env:APPLE_PASSWORD \
+      #     --verbose --wait
+      # RELEASE
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            */bin/*
+
+permissions:
+  contents: write
